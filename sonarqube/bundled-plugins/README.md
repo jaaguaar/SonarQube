@@ -1,0 +1,1 @@
+## Sonarqube bundled-plugins folder
