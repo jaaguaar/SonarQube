@@ -1,0 +1,1 @@
+## Sonarqube extensions folder
