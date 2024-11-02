@@ -1,0 +1,5 @@
+# Dockerfile
+FROM certbot/certbot
+
+# Install Docker CLI
+RUN apk add --no-cache docker-cli
