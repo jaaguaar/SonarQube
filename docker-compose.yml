@@ -1,0 +1,82 @@
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+      - ./nginx/certbot/www:/var/www/certbot:ro
+      - ./nginx/certbot/conf:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx:rw
+    networks:
+      - sonarnet
+    restart: always
+
+  certbot:
+    build:
+      context: .
+      dockerfile: Dockerfile.certbot
+    container_name: certbot
+    volumes:
+      - ./nginx/certbot/www:/var/www/certbot:rw
+      - ./nginx/logs:/var/log/letsencrypt:rw
+      - ./nginx/certbot/conf:/etc/letsencrypt:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: >
+      /bin/sh -c 'trap exit TERM;
+      while :; do
+        certbot renew && docker restart nginx;
+        sleep 12h & wait $${!};
+      done;'
+    networks:
+      - sonarnet
+    restart: always
+
+  sonarqube:
+    image: sonarqube:10.7-community
+    command: "-Dsonar.search.javaAdditionalOpts=-Dnode.store.allow_mmap=false"
+    container_name: sonarqube
+    hostname: sonarqube
+    ports:
+      - 9000:9000
+    volumes:
+      - /opt/sonarqube/conf:/opt/sonarqube/conf:z
+      - /opt/sonarqube/data:/opt/sonarqube/data:z
+      - /opt/sonarqube/logs:/opt/sonarqube/logs:z
+      - /opt/sonarqube/extensions:/opt/sonarqube/extensions:z
+      - /opt/sonarqube/bundled-plugins:/opt/sonarqube/lib/bundled-plugins:z
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://postgres:5432/sonarqube
+      - SONAR_JDBC_USERNAME=sonarqube
+      - SONAR_JDBC_PASSWORD=Son#0000
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    networks:
+      - sonarnet
+    restart: unless-stopped
+    depends_on:
+      - postgres  # Ensure PostgreSQL is started before SonarQube
+      - nginx     # Ensure NGINX is started before SonarQube
+
+  postgres:
+    image: postgres:17
+    container_name: postgres
+    environment:
+      - POSTGRES_DB=sonarqube
+      - POSTGRES_USER=sonarqube
+      - POSTGRES_PASSWORD=Son#0000
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+    networks:
+      - sonarnet
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "sonarqube"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  sonarnet:
